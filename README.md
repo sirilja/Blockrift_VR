@@ -4,7 +4,7 @@ A small, browser-based voxel sandbox in the style of Minecraft — built with
 [Three.js](https://threejs.org) and [WebXR](https://immersiveweb.dev/), playable
 in VR on the Meta Quest 3 as well as on desktop for testing without a headset.
 
-Everything lives in a single file: `blockrift-vr.html`. No build process,
+No build process,
 no installation required.
 
 ## Features
