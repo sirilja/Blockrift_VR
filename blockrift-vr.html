@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>BLOCKRIFT — VR Voxel-Welt für Meta Quest 3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --sky:#0f1b2b;
+    --grass:#6fae3e;
+    --dirt:#8a5a34;
+    --stone:#8d9199;
+    --amber:#f2b544;
+    --cream:#eee6d3;
+    --panel:#141c14;
+    --panel-edge:#2c3a26;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--sky);overflow:hidden;font-family:'JetBrains Mono',monospace;color:var(--cream);}
+  #landing{
+    position:fixed;inset:0;z-index:20;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:
+      linear-gradient(180deg, #16233a 0%, #0f1b2b 55%, #0a1420 100%);
+    padding:24px;
+    text-align:center;
+    overflow-y:auto;
+  }
+  .voxel-strip{
+    position:absolute;left:0;right:0;bottom:0;height:14vh;min-height:90px;
+    background-image:
+      repeating-linear-gradient(90deg, var(--grass) 0 40px, #5f9a37 40px 80px);
+    box-shadow:0 -6px 0 #4c7f2c inset;
+    image-rendering:pixelated;
+    opacity:0.9;
+  }
+  .voxel-strip::before{
+    content:"";position:absolute;left:0;right:0;top:-18px;height:18px;
+    background-image: repeating-linear-gradient(90deg, var(--dirt) 0 40px, #764a29 40px 80px);
+  }
+  .eyebrow{
+    letter-spacing:.35em;text-transform:uppercase;font-size:11px;color:var(--amber);
+    margin-bottom:18px;font-weight:700;
+  }
+  h1{
+    font-family:'Press Start 2P', monospace;
+    font-size:clamp(28px, 6vw, 54px);
+    line-height:1.35;
+    margin:0 0 18px 0;
+    color:var(--cream);
+    text-shadow: 4px 4px 0 #3a2a1a, 8px 8px 0 rgba(0,0,0,.35);
+    letter-spacing:1px;
+  }
+  h1 span{color:var(--amber);}
+  .sub{
+    max-width:560px;font-size:15px;line-height:1.7;color:#c9d6c4;margin-bottom:36px;
+  }
+  .btnrow{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:28px;z-index:2;}
+  button.block-btn{
+    font-family:'Press Start 2P', monospace;
+    font-size:13px;
+    padding:18px 26px;
+    background:var(--grass);
+    color:#12210a;
+    border:none;
+    border-bottom:6px solid #4c7f2c;
+    cursor:pointer;
+    letter-spacing:1px;
+    transition:transform .08s ease;
+  }
+  button.block-btn:active{transform:translateY(4px);border-bottom-width:2px;}
+  button.block-btn.secondary{
+    background:var(--stone);border-bottom-color:#5b5e64;color:#1b1c1e;
+  }
+  .req{font-size:12px;color:#8fa085;max-width:520px;margin-bottom:8px;z-index:2;}
+  .hint{font-size:11px;color:#6d7a67;z-index:2;}
+  #vrCheck{font-size:11px;color:var(--amber);z-index:2;margin-bottom:18px;min-height:14px;}
+
+  #game{position:fixed;inset:0;z-index:10;display:none;}
+  canvas{display:block;width:100%;height:100%;}
+
+  #crosshair{
+    position:fixed;top:50%;left:50%;width:8px;height:8px;
+    transform:translate(-50%,-50%);
+    border:2px solid var(--cream);border-radius:1px;
+    z-index:15;pointer-events:none;mix-blend-mode:difference;
+    display:none;
+  }
+  #hotbar{
+    position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+    display:none;gap:6px;z-index:15;background:rgba(10,14,10,.55);
+    padding:8px;border:2px solid var(--panel-edge);
+  }
+  .slot{
+    width:46px;height:46px;display:flex;align-items:center;justify-content:center;
+    font-family:'Press Start 2P',monospace;font-size:9px;color:var(--cream);
+    border:2px solid #3d4a35;background:#1c241a;position:relative;
+  }
+  .slot.active{border-color:var(--amber);box-shadow:0 0 0 2px var(--amber) inset;}
+  .slot .num{position:absolute;top:2px;left:3px;font-size:8px;color:#8fa085;}
+  #topinfo{
+    position:fixed;top:14px;left:14px;z-index:15;display:none;
+    font-size:12px;color:#cfd8c8;background:rgba(10,14,10,.5);padding:8px 12px;
+    border:1px solid var(--panel-edge);line-height:1.6;
+  }
+  #backBtn{
+    position:fixed;top:14px;right:14px;z-index:16;display:none;
+    font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--cream);
+    background:rgba(10,14,10,.6);border:1px solid var(--panel-edge);
+    padding:8px 12px;cursor:pointer;
+  }
+  #vrBtnHolder{position:fixed;z-index:16;bottom:18px;right:18px;display:none;}
+  #vrBtnHolder button{
+    font-family:'JetBrains Mono',monospace !important;
+  }
+  @media (max-width:600px){
+    .voxel-strip{height:8vh;}
+  }
+</style>
+</head>
+<body>
+
+<div id="landing">
+  <div class="eyebrow">WebXR &middot; Meta Quest 3 &middot; Voxel-Sandbox</div>
+  <h1>BLOCK<span>RIFT</span></h1>
+  <div class="sub">
+    Eine kleine, im Browser laufende Voxel-Welt im Stil von Minecraft. Baue ab, platziere Blöcke,
+    lauf über prozedural erzeugtes Gelände — direkt im Meta-Quest-3-Browser in VR, oder am Rechner
+    per Maus &amp; Tastatur zum Testen.
+  </div>
+  <div id="vrCheck">Prüfe WebXR-Unterstützung …</div>
+  <div class="btnrow">
+    <button class="block-btn" id="startBtn">▶ SPIEL STARTEN</button>
+  </div>
+  <div class="req">
+    Auf der Quest 3: Diese Seite im Meta-Browser öffnen, auf „Spiel starten” tippen,
+    dann unten rechts im Spiel „ENTER VR” drücken.
+  </div>
+  <div class="hint">Desktop: Klick ins Bild sperrt die Maus · WASD bewegen · Leertaste springen · Linksklick abbauen · Rechtsklick platzieren · 1–6 Blockauswahl · ESC verlassen</div>
+  <div class="voxel-strip"></div>
+</div>
+
+<div id="game">
+  <div id="crosshair"></div>
+  <div id="hotbar"></div>
+  <div id="topinfo">Blöcke: <span id="blockCount">0</span><br>Steuerung: <span id="controlMode">—</span></div>
+  <button id="backBtn">✕ Zur Startseite</button>
+  <div id="vrBtnHolder"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+/* ---------------------------------------------------------
+   BLOCKRIFT — minimaler Voxel-Sandbox-Klon für WebXR
+--------------------------------------------------------- */
+
+const BLOCK_TYPES = [
+  { id:'grass', color:0x6fae3e, label:'GRAS' },
+  { id:'dirt',  color:0x8a5a34, label:'ERDE' },
+  { id:'stone', color:0x8d9199, label:'STEIN' },
+  { id:'sand',  color:0xdcc27a, label:'SAND' },
+  { id:'wood',  color:0x7a5a34, label:'HOLZ' },
+  { id:'leaves',color:0x3f7a34, label:'LAUB' },
+];
+
+const WORLD_HALF = 20; // Welt: -20..20 in x/z
+let selectedType = 0;
+
+// ---- UI: Hotbar aufbauen ----
+const hotbarEl = document.getElementById('hotbar');
+BLOCK_TYPES.forEach((b, i) => {
+  const slot = document.createElement('div');
+  slot.className = 'slot' + (i === 0 ? ' active' : '');
+  slot.dataset.index = i;
+  const c = document.createElement('div');
+  c.style.width = '20px'; c.style.height='20px';
+  c.style.background = '#' + b.color.toString(16).padStart(6,'0');
+  c.style.border = '1px solid rgba(0,0,0,.4)';
+  const num = document.createElement('div');
+  num.className = 'num'; num.textContent = (i+1);
+  slot.appendChild(num);
+  slot.appendChild(c);
+  slot.addEventListener('click', () => selectSlot(i));
+  hotbarEl.appendChild(slot);
+});
+function selectSlot(i){
+  selectedType = i;
+  [...hotbarEl.children].forEach((el,idx)=> el.classList.toggle('active', idx===i));
+}
+
+// ---- Landing -> Spiel ----
+const landing = document.getElementById('landing');
+const gameEl = document.getElementById('game');
+const startBtn = document.getElementById('startBtn');
+const backBtn = document.getElementById('backBtn');
+const vrCheck = document.getElementById('vrCheck');
+const crosshair = document.getElementById('crosshair');
+const topinfo = document.getElementById('topinfo');
+const blockCountEl = document.getElementById('blockCount');
+const controlModeEl = document.getElementById('controlMode');
+
+let xrSupported = false;
+if (navigator.xr && navigator.xr.isSessionSupported) {
+  navigator.xr.isSessionSupported('immersive-vr').then(ok => {
+    xrSupported = ok;
+    vrCheck.textContent = ok
+      ? '✓ WebXR erkannt — VR-Modus verfügbar.'
+      : 'Kein WebXR erkannt — Desktop-Steuerung wird genutzt (auf der Quest im Meta-Browser öffnen für VR).';
+  }).catch(()=>{ vrCheck.textContent = 'WebXR-Prüfung fehlgeschlagen — Desktop-Steuerung verfügbar.'; });
+} else {
+  vrCheck.textContent = 'Dieser Browser unterstützt kein WebXR — Desktop-Steuerung verfügbar.';
+}
+
+let gameStarted = false;
+startBtn.addEventListener('click', () => {
+  landing.style.display = 'none';
+  gameEl.style.display = 'block';
+  crosshair.style.display = 'block';
+  hotbarEl.style.display = 'flex';
+  topinfo.style.display = 'block';
+  backBtn.style.display = 'block';
+  document.getElementById('vrBtnHolder').style.display = 'block';
+  controlModeEl.textContent = 'Desktop (Maus/Tastatur)';
+  if (!gameStarted) { initGame(); gameStarted = true; }
+});
+backBtn.addEventListener('click', () => {
+  document.exitPointerLock && document.exitPointerLock();
+  gameEl.style.display = 'none';
+  crosshair.style.display = 'none';
+  hotbarEl.style.display = 'none';
+  topinfo.style.display = 'none';
+  backBtn.style.display = 'none';
+  landing.style.display = 'flex';
+});
+
+// ---- Simple Wertrausch-Funktion für Terrain ----
+function terrainHeight(x, z) {
+  const n = Math.sin(x*0.25) + Math.sin(z*0.22) + Math.sin((x+z)*0.13) + Math.sin(Math.sqrt(x*x+z*z)*0.18);
+  return Math.max(1, Math.round(4 + n * 1.6));
+}
+
+function initGame() {
+  const canvasHolder = gameEl;
+
+  // ---- Renderer / Scene / Camera ----
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.xr.enabled = true;
+  canvasHolder.appendChild(renderer.domElement);
+
+  const vrButton = VRButton.createButton(renderer);
+  document.getElementById('vrBtnHolder').appendChild(vrButton);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x8fc7e8);
+  scene.fog = new THREE.Fog(0x8fc7e8, 25, 70);
+
+  const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.05, 200);
+
+  // Rig: player container that we move; camera + controllers live inside for VR
+  const player = new THREE.Group();
+  player.position.set(0, 12, 0);
+  player.add(camera);
+  scene.add(player);
+
+  // ---- Licht ----
+  const sun = new THREE.DirectionalLight(0xfff3d6, 1.0);
+  sun.position.set(30, 50, 10);
+  scene.add(sun);
+  scene.add(new THREE.AmbientLight(0x9fb8c9, 0.65));
+
+  // ---- Weltdaten ----
+  const blocks = new Map(); // "x,y,z" -> typeIndex
+  const key = (x,y,z) => x+','+y+','+z;
+
+  function generateWorld() {
+    for (let x = -WORLD_HALF; x <= WORLD_HALF; x++) {
+      for (let z = -WORLD_HALF; z <= WORLD_HALF; z++) {
+        const h = terrainHeight(x,z);
+        for (let y = 0; y <= h; y++) {
+          let t;
+          if (y === h) t = 0;         // grass
+          else if (y >= h - 2) t = 1; // dirt
+          else t = 2;                 // stone
+          blocks.set(key(x,y,z), t);
+        }
+        // gelegentlich ein Bäumchen
+        if (h > 3 && Math.random() < 0.02) {
+          const th = 3 + Math.floor(Math.random()*2);
+          for (let ty = 1; ty <= th; ty++) blocks.set(key(x,h+ty,z), 4); // wood
+          for (let lx=-1; lx<=1; lx++)
+            for (let lz=-1; lz<=1; lz++)
+              for (let ly=0; ly<=1; ly++)
+                if (Math.random() < 0.85) blocks.set(key(x+lx,h+th+ly,z+lz), 5); // leaves
+        }
+      }
+    }
+  }
+  generateWorld();
+
+  // ---- InstancedMesh pro Blocktyp ----
+  const geo = new THREE.BoxGeometry(1,1,1);
+  const meshes = [];
+  const dummy = new THREE.Object3D();
+  const CAPACITY = 60000;
+
+  BLOCK_TYPES.forEach((b) => {
+    const mat = new THREE.MeshLambertMaterial({ color: b.color });
+    const mesh = new THREE.InstancedMesh(geo, mat, CAPACITY);
+    mesh.count = 0;
+    mesh.userData.typeIndex = BLOCK_TYPES.indexOf(b);
+    scene.add(mesh);
+    meshes.push(mesh);
+  });
+
+  function rebuildAll() {
+    meshes.forEach(m => m.count = 0);
+    const counters = meshes.map(()=>0);
+    blocks.forEach((t, k) => {
+      const [x,y,z] = k.split(',').map(Number);
+      dummy.position.set(x,y,z);
+      dummy.updateMatrix();
+      const idx = counters[t]++;
+      meshes[t].setMatrixAt(idx, dummy.matrix);
+    });
+    meshes.forEach((m,i) => {
+      m.count = counters[i];
+      m.instanceMatrix.needsUpdate = true;
+    });
+    blockCountEl.textContent = blocks.size;
+  }
+  rebuildAll();
+
+  function addBlock(x,y,z,typeIdx) {
+    if (Math.abs(x) > WORLD_HALF+5 || Math.abs(z) > WORLD_HALF+5 || y < 0 || y > 60) return;
+    blocks.set(key(x,y,z), typeIdx);
+    rebuildAll();
+  }
+  function removeBlock(x,y,z) {
+    blocks.delete(key(x,y,z));
+    rebuildAll();
+  }
+
+  // ---- Raycasting-Helfer ----
+  const raycaster = new THREE.Raycaster();
+  raycaster.far = 8;
+
+  function castAndAct(origin, direction, place, typeIdx) {
+    raycaster.set(origin, direction);
+    const hits = raycaster.intersectObjects(meshes, false);
+    if (!hits.length) return;
+    const hit = hits[0];
+    const mesh = hit.object;
+    const m = new THREE.Matrix4();
+    mesh.getMatrixAt(hit.instanceId, m);
+    const pos = new THREE.Vector3().setFromMatrixPosition(m);
+    if (place) {
+      const n = hit.face.normal.clone();
+      // Normale ist im lokalen Raum der Box (achsenausgerichtet) -> direkt übernehmbar
+      const target = pos.clone().add(n);
+      addBlock(Math.round(target.x), Math.round(target.y), Math.round(target.z), typeIdx);
+    } else {
+      removeBlock(Math.round(pos.x), Math.round(pos.y), Math.round(pos.z));
+    }
+  }
+
+  // ---- Bodenkollision (Downward-Raycast) ----
+  const downRay = new THREE.Raycaster();
+  downRay.far = 200;
+  function groundHeightAt(x,z) {
+    downRay.set(new THREE.Vector3(x, 80, z), new THREE.Vector3(0,-1,0));
+    const hits = downRay.intersectObjects(meshes, false);
+    if (hits.length) return hits[0].point.y;
+    return 0;
+  }
+
+  // =========================================================
+  // DESKTOP-STEUERUNG (Maus + Tastatur), aktiv wenn nicht in VR
+  // =========================================================
+  const keys = {};
+  let yaw = 0, pitch = 0;
+  let vy = 0;
+  let onGround = false;
+  const EYE = 1.6;
+
+  window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    const n = parseInt(e.key);
+    if (n >= 1 && n <= 6) selectSlot(n-1);
+  });
+  window.addEventListener('keyup', e => keys[e.code] = false);
+
+  renderer.domElement.addEventListener('click', () => {
+    if (!renderer.xr.isPresenting) renderer.domElement.requestPointerLock();
+  });
+  document.addEventListener('pointerlockchange', () => {
+    controlModeEl.textContent = document.pointerLockElement ? 'Desktop — Maus gesperrt (ESC zum Lösen)' : 'Desktop (Klick zum Sperren)';
+  });
+  document.addEventListener('mousemove', e => {
+    if (document.pointerLockElement !== renderer.domElement) return;
+    yaw -= e.movementX * 0.0022;
+    pitch -= e.movementY * 0.0022;
+    pitch = Math.max(-Math.PI/2+0.05, Math.min(Math.PI/2-0.05, pitch));
+  });
+  renderer.domElement.addEventListener('mousedown', e => {
+    if (renderer.xr.isPresenting) return;
+    if (document.pointerLockElement !== renderer.domElement) return;
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    const origin = new THREE.Vector3();
+    camera.getWorldPosition(origin);
+    if (e.button === 0) castAndAct(origin, dir, false); // links: abbauen
+    if (e.button === 2) castAndAct(origin, dir, true, selectedType); // rechts: platzieren
+  });
+  renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+
+  function updateDesktop(dt) {
+    if (renderer.xr.isPresenting) return;
+    player.rotation.y = yaw;
+    camera.rotation.x = pitch;
+
+    const speed = 4.2 * dt;
+    const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).negate();
+    const right = new THREE.Vector3(forward.z, 0, -forward.x);
+    const move = new THREE.Vector3();
+    if (keys['KeyW']) move.add(forward);
+    if (keys['KeyS']) move.sub(forward);
+    if (keys['KeyD']) move.add(right);
+    if (keys['KeyA']) move.sub(right);
+    if (move.lengthSq() > 0) move.normalize().multiplyScalar(speed);
+    player.position.add(move);
+
+    // Gravitation + Bodenkollision
+    vy -= 18 * dt;
+    player.position.y += vy * dt;
+    const ground = groundHeightAt(player.position.x, player.position.z) + EYE;
+    if (player.position.y <= ground) {
+      player.position.y = ground;
+      vy = 0;
+      onGround = true;
+    } else onGround = false;
+    if (keys['Space'] && onGround) vy = 6.2;
+  }
+
+  // =========================================================
+  // VR-STEUERUNG (Meta Quest 3 Controller)
+  // =========================================================
+  const controller0 = renderer.xr.getController(0); // meist rechts
+  const controller1 = renderer.xr.getController(1); // meist links
+  player.add(controller0);
+  player.add(controller1);
+
+  function makeRay(color) {
+    const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-1)]);
+    const l = new THREE.Line(g, new THREE.LineBasicMaterial({ color }));
+    l.scale.z = 5;
+    return l;
+  }
+  const ray0 = makeRay(0xf2b544); controller0.add(ray0);
+  const ray1 = makeRay(0x6fae3e); controller1.add(ray1);
+
+  let activeController = controller0; // wird per Handedness bestimmt sobald verbunden
+  let placeController = controller1;
+
+  function onConnected(e, ctrl) {
+    if (e.data && e.data.handedness === 'left') {
+      placeController = ctrl;
+    } else if (e.data && e.data.handedness === 'right') {
+      activeController = ctrl;
+    }
+  }
+  controller0.addEventListener('connected', e => onConnected(e, controller0));
+  controller1.addEventListener('connected', e => onConnected(e, controller1));
+
+  function vrRayAction(ctrl, place) {
+    const origin = new THREE.Vector3();
+    const dir = new THREE.Vector3(0,0,-1);
+    ctrl.getWorldPosition(origin);
+    dir.applyQuaternion(ctrl.getWorldQuaternion(new THREE.Quaternion()));
+    castAndAct(origin, dir, place, selectedType);
+  }
+  controller0.addEventListener('selectstart', () => vrRayAction(controller0, false));
+  controller1.addEventListener('selectstart', () => vrRayAction(controller1, false));
+  controller0.addEventListener('squeezestart', () => vrRayAction(controller0, true));
+  controller1.addEventListener('squeezestart', () => vrRayAction(controller1, true));
+
+  renderer.xr.addEventListener('sessionstart', () => {
+    controlModeEl.textContent = 'VR — Meta Quest 3';
+    // Startposition über dem Gelände
+    player.position.set(0, groundHeightAt(0,0) + EYE, 6);
+  });
+  renderer.xr.addEventListener('sessionend', () => {
+    controlModeEl.textContent = 'Desktop (Klick zum Sperren)';
+  });
+
+  function updateVR(dt) {
+    if (!renderer.xr.isPresenting) return;
+    const session = renderer.xr.getSession();
+    if (!session) return;
+    for (const src of session.inputSources) {
+      if (!src.gamepad) continue;
+      const [axX, axY] = src.gamepad.axes.length >= 4 ? [src.gamepad.axes[2], src.gamepad.axes[3]] : [src.gamepad.axes[0], src.gamepad.axes[1]];
+      if (src.handedness === 'left') {
+        // Bewegung relativ zur Blickrichtung (Headset-Yaw)
+        const camDir = new THREE.Vector3();
+        camera.getWorldDirection(camDir);
+        camDir.y = 0; camDir.normalize();
+        const camRight = new THREE.Vector3(camDir.z, 0, -camDir.x);
+        const mv = new THREE.Vector3();
+        mv.addScaledVector(camDir, -(axY||0));
+        mv.addScaledVector(camRight, (axX||0));
+        if (mv.lengthSq() > 0.0025) {
+          mv.normalize().multiplyScalar(3.4 * dt);
+          player.position.add(mv);
+        }
+      } else if (src.handedness === 'right') {
+        // Vertikale Bewegung (Fliegen) + Snap-Turn
+        if (Math.abs(axY||0) > 0.2) {
+          player.position.y -= (axY) * 2.4 * dt;
+        }
+      }
+    }
+    // Boden nicht durchfallen in VR
+    const ground = groundHeightAt(player.position.x, player.position.z);
+    if (player.position.y < ground + 1.2) player.position.y = ground + 1.2;
+  }
+
+  // ---- Resize ----
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // ---- Hauptloop ----
+  const clock = new THREE.Clock();
+  renderer.setAnimationLoop(() => {
+    const dt = Math.min(clock.getDelta(), 0.05);
+    updateDesktop(dt);
+    updateVR(dt);
+    renderer.render(scene, camera);
+  });
+}
+</script>
+</body>
+</html>
